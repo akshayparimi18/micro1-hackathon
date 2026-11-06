@@ -1,0 +1,38 @@
+{
+  "task_01_reducer_duplication": {
+    "final_items": ["seed", "seed", "step_1", "seed", "seed", "step_1", "step_2"],
+    "total_length": 7,
+    "root_cause": "in_node_concatenation_with_operator_add"
+  },
+  "task_02_conditional_deadlock": {
+    "terminates": false,
+    "looping_nodes": ["router_node", "validator_node"],
+    "state_at_step_6": {
+      "retry_count": 1,
+      "status": "retrying"
+    }
+  },
+  "task_03_parallel_fanout_collision": {
+    "status": "InvalidUpdateError",
+    "conflicting_channel": "audit_score",
+    "surviving_logs": ["init_log", "branch_a_ok", "branch_b_ok"]
+  },
+  "task_04_checkpointer_hitl_replay": {
+    "executed_nodes_on_resume": ["human_review_node", "publish_node"],
+    "re_executed_nodes": [],
+    "final_approved_by": "supervisor_override",
+    "final_version": 2
+  },
+  "task_05_message_window_orphan": {
+    "remaining_roles": ["tool", "assistant", "user", "assistant", "tool"],
+    "first_message_id": "msg_3",
+    "is_valid_llm_payload": false,
+    "invalid_reason": "orphaned_tool_message_at_index_0"
+  },
+  "task_06_send_mapreduce_overwrite": {
+    "status": "InvalidUpdateError",
+    "conflicting_channel": "processed_count",
+    "aggregated_results": ["chunk_1_done", "chunk_2_done", "chunk_3_done"],
+    "required_fix": "annotate_processed_count_with_operator_add"
+  }
+}
