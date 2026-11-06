@@ -8,6 +8,7 @@ Features:
 - --verify-negative: Runs corrupted responses to verify zero false passes (0% pass check).
 - --models: Executes evaluations on real LLM APIs (Gemini, OpenAI, Anthropic, Groq).
 - --trials: Multi-trial consistency testing (pass@k and pass^k).
+- Automatic rate-limit handling (HTTP 429 exponential backoff) and polite pacing.
 - Full transcript logging to transcripts/<model>/<task>_trial_<n>.json.
 - Metric summary saved to results/summary.json.
 """
@@ -55,117 +56,151 @@ def load_task_prompts() -> Dict[str, str]:
     return tasks
 
 
-def call_llm(model: str, prompt: str, temperature: float = 0.0) -> str:
+def call_llm(model: str, prompt: str, temperature: float = 0.0, max_retries: int = 5) -> str:
     """
     Universal LLM caller supporting Gemini, OpenAI, Anthropic, and Groq.
-    Loads API keys from environment.
+    Includes automatic exponential backoff on HTTP 429 rate limits.
     """
-    # 1. Oracle reference bypass
     if model.lower() == "oracle":
-        solutions = load_solutions()
-        raise ValueError("Oracle mode should be called directly.")
+        raise ValueError("Oracle mode should be called directly via --verify-reference.")
 
-    # 2. Google Gemini
-    if "gemini" in model.lower():
-        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
-            raise RuntimeError("GEMINI_API_KEY or GOOGLE_API_KEY not set in environment or .env file.")
+    for attempt in range(max_retries):
+        try:
+            # 1. Google Gemini
+            if "gemini" in model.lower():
+                api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+                if not api_key or api_key == "your_google_ai_studio_key_here":
+                    raise RuntimeError(
+                        "GEMINI_API_KEY not set or still set to placeholder in .env. "
+                        "Please replace 'your_google_ai_studio_key_here' in .env with your actual key."
+                    )
 
-        clean_model = model.replace("gemini/", "").replace("models/", "")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={api_key}"
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": temperature}
-        }
-        with httpx.Client(timeout=60.0) as client:
-            resp = client.post(url, json=payload)
-            if resp.status_code != 200:
-                raise RuntimeError(f"Gemini API error ({resp.status_code}): {resp.text}")
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                return ""
-            parts = candidates[0].get("content", {}).get("parts", [])
-            return parts[0].get("text", "") if parts else ""
+                clean_model = model.replace("gemini/", "").replace("models/", "")
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={api_key}"
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": temperature}
+                }
+                with httpx.Client(timeout=90.0) as client:
+                    resp = client.post(url, json=payload)
+                    if resp.status_code == 429:
+                        wait_time = (attempt + 1) * 5
+                        print(f"   [RATE LIMIT] HTTP 429 encountered. Backing off for {wait_time}s (attempt {attempt+1}/{max_retries})...")
+                        time.sleep(wait_time)
+                        continue
+                    if resp.status_code != 200:
+                        raise RuntimeError(f"Gemini API error ({resp.status_code}): {resp.text}")
 
-    # 3. OpenAI / o1 / GPT
-    if model.startswith("gpt-") or model.startswith("o1-") or model.startswith("o3-") or "openai" in model.lower():
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            raise RuntimeError("OPENAI_API_KEY not set in environment or .env file.")
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if not candidates:
+                        return ""
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    return parts[0].get("text", "") if parts else ""
 
-        clean_model = model.replace("openai/", "")
-        url = "https://api.openai.com/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": clean_model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": temperature
-        }
-        if clean_model.startswith("o1-") or clean_model.startswith("o3-"):
-            payload.pop("temperature", None)
+            # 2. OpenAI
+            if model.startswith("gpt-") or model.startswith("o1-") or model.startswith("o3-") or "openai" in model.lower():
+                api_key = os.environ.get("OPENAI_API_KEY")
+                if not api_key:
+                    raise RuntimeError("OPENAI_API_KEY not set in environment or .env file.")
 
-        with httpx.Client(timeout=90.0) as client:
-            resp = client.post(url, headers=headers, json=payload)
-            if resp.status_code != 200:
-                raise RuntimeError(f"OpenAI API error ({resp.status_code}): {resp.text}")
-            data = resp.json()
-            return data["choices"][0]["message"]["content"] or ""
+                clean_model = model.replace("openai/", "")
+                url = "https://api.openai.com/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": clean_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": temperature
+                }
+                if clean_model.startswith("o1-") or clean_model.startswith("o3-"):
+                    payload.pop("temperature", None)
 
-    # 4. Anthropic Claude
-    if "claude" in model.lower() or "anthropic" in model.lower():
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY not set in environment or .env file.")
+                with httpx.Client(timeout=90.0) as client:
+                    resp = client.post(url, headers=headers, json=payload)
+                    if resp.status_code == 429:
+                        wait_time = (attempt + 1) * 5
+                        print(f"   [RATE LIMIT] HTTP 429 encountered. Backing off for {wait_time}s...")
+                        time.sleep(wait_time)
+                        continue
+                    if resp.status_code != 200:
+                        raise RuntimeError(f"OpenAI API error ({resp.status_code}): {resp.text}")
+                    data = resp.json()
+                    return data["choices"][0]["message"]["content"] or ""
 
-        clean_model = model.replace("anthropic/", "")
-        url = "https://api.anthropic.com/v1/messages"
-        headers = {
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": clean_model,
-            "max_tokens": 2048,
-            "temperature": temperature,
-            "messages": [{"role": "user", "content": prompt}]
-        }
-        with httpx.Client(timeout=90.0) as client:
-            resp = client.post(url, headers=headers, json=payload)
-            if resp.status_code != 200:
-                raise RuntimeError(f"Anthropic API error ({resp.status_code}): {resp.text}")
-            data = resp.json()
-            return data["content"][0]["text"] or ""
+            # 3. Anthropic
+            if "claude" in model.lower() or "anthropic" in model.lower():
+                api_key = os.environ.get("ANTHROPIC_API_KEY")
+                if not api_key:
+                    raise RuntimeError("ANTHROPIC_API_KEY not set in environment or .env file.")
 
-    # 5. Groq (Llama / Mixtral)
-    if "groq" in model.lower() or "llama" in model.lower():
-        api_key = os.environ.get("GROQ_API_KEY")
-        if not api_key:
-            raise RuntimeError("GROQ_API_KEY not set in environment or .env file.")
+                clean_model = model.replace("anthropic/", "")
+                url = "https://api.anthropic.com/v1/messages"
+                headers = {
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": clean_model,
+                    "max_tokens": 2048,
+                    "temperature": temperature,
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+                with httpx.Client(timeout=90.0) as client:
+                    resp = client.post(url, headers=headers, json=payload)
+                    if resp.status_code == 429:
+                        wait_time = (attempt + 1) * 5
+                        print(f"   [RATE LIMIT] HTTP 429 encountered. Backing off for {wait_time}s...")
+                        time.sleep(wait_time)
+                        continue
+                    if resp.status_code != 200:
+                        raise RuntimeError(f"Anthropic API error ({resp.status_code}): {resp.text}")
+                    data = resp.json()
+                    return data["content"][0]["text"] or ""
 
-        clean_model = model.replace("groq/", "")
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": clean_model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": temperature
-        }
-        with httpx.Client(timeout=60.0) as client:
-            resp = client.post(url, headers=headers, json=payload)
-            if resp.status_code != 200:
-                raise RuntimeError(f"Groq API error ({resp.status_code}): {resp.text}")
-            data = resp.json()
-            return data["choices"][0]["message"]["content"] or ""
+            # 4. Groq
+            if "groq" in model.lower() or "llama" in model.lower():
+                api_key = os.environ.get("GROQ_API_KEY")
+                if not api_key:
+                    raise RuntimeError("GROQ_API_KEY not set in environment or .env file.")
 
-    raise ValueError(f"Unsupported model provider: {model}. Supported providers: gemini, openai, anthropic, groq.")
+                clean_model = model.replace("groq/", "")
+                url = "https://api.groq.com/openai/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": clean_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": temperature
+                }
+                with httpx.Client(timeout=60.0) as client:
+                    resp = client.post(url, headers=headers, json=payload)
+                    if resp.status_code == 429:
+                        wait_time = (attempt + 1) * 5
+                        print(f"   [RATE LIMIT] HTTP 429 encountered. Backing off for {wait_time}s...")
+                        time.sleep(wait_time)
+                        continue
+                    if resp.status_code != 200:
+                        raise RuntimeError(f"Groq API error ({resp.status_code}): {resp.text}")
+                    data = resp.json()
+                    return data["choices"][0]["message"]["content"] or ""
+
+            raise ValueError(f"Unsupported model provider: {model}")
+
+        except httpx.RequestError as e:
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 4
+                print(f"   [NETWORK WARNING] Connection issue: {e}. Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                raise
+
+    raise RuntimeError(f"Failed to get response for {model} after {max_retries} attempts.")
 
 
 def run_verify_reference():
@@ -253,7 +288,8 @@ def run_verify_negative():
 def evaluate_model(
     model: str,
     trials: int = 3,
-    temperature: float = 0.0
+    temperature: float = 0.0,
+    delay_between_calls: float = 4.0
 ) -> Dict[str, Any]:
     """Runs evaluation of a real model across all tasks and trials."""
     tasks = load_task_prompts()
@@ -319,6 +355,10 @@ def evaluate_model(
             status = "PASS" if passed else "FAIL"
             print(f"   Trial {trial_num}/{trials}: [{status}] Partial Score: {grade['partial_score']*100:.1f}% ({elapsed:.2f}s)")
 
+            # Polite pacing to respect RPM rate limits on free-tier
+            if delay_between_calls > 0:
+                time.sleep(delay_between_calls)
+
         # Per-task aggregations
         task_pass_rate = sum(trial_passes) / len(trial_passes)
         task_avg_score = sum(trial_scores) / len(trial_scores)
@@ -374,6 +414,7 @@ def main():
     parser.add_argument("--models", nargs="+", default=[], help="List of model names to evaluate")
     parser.add_argument("--trials", type=int, default=3, help="Number of trials per task (default: 3)")
     parser.add_argument("--temperature", type=float, default=0.0, help="Sampling temperature (default: 0.0)")
+    parser.add_argument("--delay", type=float, default=4.0, help="Delay in seconds between API calls to avoid rate limits")
 
     args = parser.parse_args()
 
@@ -406,7 +447,7 @@ def main():
         current_summary = {"benchmark": "LangGraphBench", "models": {}}
 
     for model_name in args.models:
-        res = evaluate_model(model_name, trials=args.trials, temperature=args.temperature)
+        res = evaluate_model(model_name, trials=args.trials, temperature=args.temperature, delay_between_calls=args.delay)
         current_summary["models"][model_name] = res
 
     with open(summary_file, "w", encoding="utf-8") as f:
