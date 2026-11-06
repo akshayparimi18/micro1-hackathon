@@ -1,0 +1,51 @@
+name: LangGraphBench CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verify:
+    name: Verify Benchmark & Runtime Semantics
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Grader Unit Tests
+        run: |
+          python -m unittest graders/test_graders.py
+
+      - name: Verify Ground Truth Against LangGraph Runtime
+        run: |
+          python verify_ground_truth.py
+
+      - name: Run Reference Verification (Oracle Mode)
+        run: |
+          python run_eval.py --verify-reference
+
+      - name: Run Negative / Corrupted Cases Verification
+        run: |
+          python run_eval.py --verify-negative
+
+      - name: Package Submission ZIP & Check Size
+        run: |
+          python package_submission.py
