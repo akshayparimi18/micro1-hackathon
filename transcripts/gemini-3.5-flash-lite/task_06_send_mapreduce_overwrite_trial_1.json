@@ -2,7 +2,7 @@
   "task_id": "task_06_send_mapreduce_overwrite",
   "model": "gemini-3.5-flash-lite",
   "trial": 1,
-  "elapsed_seconds": 1.24,
+  "elapsed_seconds": 1.64,
   "grade": {
     "passed": 1,
     "partial_score": 1.0,

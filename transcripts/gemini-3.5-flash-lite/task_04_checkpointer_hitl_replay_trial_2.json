@@ -1,0 +1,76 @@
+{
+  "task_id": "task_04_checkpointer_hitl_replay",
+  "model": "gemini-3.5-flash-lite",
+  "trial": 2,
+  "elapsed_seconds": 1.38,
+  "grade": {
+    "passed": 0,
+    "partial_score": 0.8,
+    "total_fields": 5,
+    "matched_fields": 4,
+    "diagnostics": {
+      "executed_nodes_on_resume": {
+        "expected": [
+          "publish_node"
+        ],
+        "actual": [
+          "publish_node"
+        ],
+        "matched": true
+      },
+      "skipped_nodes_due_to_as_node": {
+        "expected": [
+          "human_review_node"
+        ],
+        "actual": [
+          "human_review_node"
+        ],
+        "matched": true
+      },
+      "final_approved_by": {
+        "expected": "supervisor_override",
+        "actual": "supervisor_override",
+        "matched": true
+      },
+      "final_version": {
+        "expected": 11,
+        "actual": 12,
+        "matched": false
+      },
+      "final_history": {
+        "expected": [
+          "init",
+          "drafted",
+          "override",
+          "published_by_fast_track_v1"
+        ],
+        "actual": [
+          "init",
+          "drafted",
+          "override",
+          "published_by_fast_track_v1"
+        ],
+        "matched": true
+      }
+    },
+    "error": null
+  },
+  "extracted_answer": {
+    "executed_nodes_on_resume": [
+      "publish_node"
+    ],
+    "skipped_nodes_due_to_as_node": [
+      "human_review_node"
+    ],
+    "final_approved_by": "supervisor_override",
+    "final_version": 12,
+    "final_history": [
+      "init",
+      "drafted",
+      "override",
+      "published_by_fast_track_v1"
+    ]
+  },
+  "raw_response": "<final_answer>\n{\n  \"executed_nodes_on_resume\": [\n    \"publish_node\"\n  ],\n  \"skipped_nodes_due_to_as_node\": [\n    \"human_review_node\"\n  ],\n  \"final_approved_by\": \"supervisor_override\",\n  \"final_version\": 12,\n  \"final_history\": [\n    \"init\",\n    \"drafted\",\n    \"override\",\n    \"published_by_fast_track_v1\"\n  ]\n}\n</final_answer>",
+  "prompt": "# Task 04: Checkpointer HITL Replay & as_node Edge Re-routing\n\nYou are an expert engineer evaluating state persistence and interruption replay in LangGraph with `MemorySaver`.\n\n### Code\n```python\nimport operator\nfrom typing import Annotated, TypedDict\nfrom langgraph.graph import StateGraph, START, END\nfrom langgraph.checkpoint.memory import MemorySaver\n\nclass ReviewState(TypedDict):\n    version: int\n    approved_by: str\n    history: Annotated[list[str], operator.add]\n\ndef draft_node(state: ReviewState) -> dict:\n    return {\"version\": state[\"version\"] + 1, \"approved_by\": \"pending\", \"history\": [\"drafted\"]}\n\ndef route_draft(state: ReviewState) -> str:\n    if state[\"approved_by\"] == \"fast_track\":\n        return \"publish_node\"\n    return \"human_review_node\"\n\ndef human_review_node(state: ReviewState) -> dict:\n    return {\"version\": state[\"version\"] + 1, \"history\": [\"reviewed\"]}\n\ndef publish_node(state: ReviewState) -> dict:\n    app = state[\"approved_by\"]\n    v = state[\"version\"]\n    tag = \"supervisor_override\" if (app == \"fast_track\" and v == 1) else \"standard_publish\"\n    return {\"version\": v + 10, \"approved_by\": tag, \"history\": [f\"published_by_{app}_v{v}\"]}\n\ncheckpointer = MemorySaver()\nbuilder = StateGraph(ReviewState)\nbuilder.add_node(\"draft_node\", draft_node)\nbuilder.add_node(\"human_review_node\", human_review_node)\nbuilder.add_node(\"publish_node\", publish_node)\n\nbuilder.add_edge(START, \"draft_node\")\nbuilder.add_conditional_edges(\"draft_node\", route_draft, [\"human_review_node\", \"publish_node\"])\nbuilder.add_edge(\"human_review_node\", \"publish_node\")\nbuilder.add_edge(\"publish_node\", END)\n\ngraph = builder.compile(checkpointer=checkpointer, interrupt_before=[\"human_review_node\"])\nconfig = {\"configurable\": {\"thread_id\": \"thread-101\"}}\n\n# PHASE 1\ngraph.invoke({\"version\": 0, \"approved_by\": \"none\", \"history\": [\"init\"]}, config=config)\n\n# PHASE 2\ngraph.update_state(config, {\"approved_by\": \"fast_track\", \"history\": [\"override\"]}, as_node=\"draft_node\")\nfinal_state = graph.invoke(None, config=config)\n```\n\n### Problem Description\nTrace the lifecycle across Phase 1 and Phase 2:\n1. What state is checkpointed during Phase 1 before the interrupt takes effect?\n2. When `graph.update_state` is invoked with `as_node=\"draft_node\"`, how does LangGraph's checkpointer process the reducer for `history`, the state update for `approved_by`, and the outgoing conditional edges from `draft_node`?\n3. When `graph.invoke(None, config=config)` is called to resume:\n   - Which nodes execute upon resume?\n   - Which nodes are bypassed/skipped?\n   - What are the final values of `approved_by`, `version`, and `history`?\n\n### Output Instructions\nYou MUST return your response as a valid JSON object enclosed strictly inside `<final_answer>...</final_answer>` tags. Do not put markdown code fences inside the tags.\n\nThe JSON object MUST contain exactly these keys:\n- `\"executed_nodes_on_resume\"`: (list of str) The ordered list of node names that executed during Phase 2 resume (e.g. `[\"node_a\"]`).\n- `\"skipped_nodes_due_to_as_node\"`: (list of str) The list of node names that were skipped because of the `as_node` update, or `[]` if none.\n- `\"final_approved_by\"`: (str) The exact value of `final_state[\"approved_by\"]`.\n- `\"final_version\"`: (int) The exact integer value of `final_state[\"version\"]`.\n- `\"final_history\"`: (list of str) The exact final list of strings in `final_state[\"history\"]`.\n\nExample response format:\n<final_answer>\n{\n  \"executed_nodes_on_resume\": [\"publish_node\"],\n  \"skipped_nodes_due_to_as_node\": [\"human_review_node\"],\n  \"final_approved_by\": \"supervisor_override\",\n  \"final_version\": 11,\n  \"final_history\": [\"init\", \"drafted\", \"override\", \"published_by_fast_track_v1\"]\n}\n</final_answer>\n"
+}
