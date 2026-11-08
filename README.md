@@ -11,7 +11,7 @@
 
 **In one sentence:** *LangGraphBench tests whether frontier AI models can mentally simulate asynchronous, channel-reduced Pregel state machines, or whether their imperative Python bias causes them to systematically mispredict state reducers, parallel collisions, checkpointer replays, and cyclic deadlocks.*
 
-While frontier models (Gemini 3.5 Flash, Gemini 3.6 Flash) have begun to internalize Pregel channel semantics, lightweight models (such as Gemini 3.1 Flash-Lite) **consistently hallucinate and fail** when asked to predict the exact runtime behavior of:
+While frontier models (such as Gemini 3.6 Flash) can trace straightforward linear graphs, current models **consistently trip up and fail** when asked to predict the exact runtime behavior of:
 1. **Channel Reducer Accumulation:** Misinterpreting `Annotated[list, operator.add]` as simple dictionary key reassignment, missing explosive list duplication.
 2. **Conditional Graph Deadlocks:** Missing subtle state resets inside routing nodes that trap the graph in infinite cycles, naively assuming linear retry increments.
 3. **Parallel Fan-Out Collisions:** Forgetting that multiple concurrent branches writing to an un-annotated scalar channel in the same superstep triggers `InvalidUpdateError`.
@@ -41,10 +41,10 @@ All 6 tasks represent real, documented failure modes encountered in production L
 | Task ID | Task Title | Core LangGraph Concept Under Test | Key Technical Nuance |
 |---|---|---|---|
 | `task_01_reducer_duplication` | **Reducer State Duplication** | `Annotated[list[str], operator.add]` channel reducer | In-node concatenation (`state["items"] + ["step_1"]`) combined with `operator.add` creates exponential item duplication (final length 7, not 3). |
-| `task_02_conditional_deadlock` | **Conditional Graph Deadlock** | Conditional routing & cyclic state transitions | Router node resets `retry_count = 0` whenever `status == "retrying"`, causing an infinite ping-pong loop between router and validator. |
-| `task_03_parallel_fanout_collision` | **Parallel Fan-Out Channel Collision** | Superstep channel writes without reducers | Two parallel branches write distinct integers to un-annotated scalar channel `audit_score`, triggering runtime `InvalidUpdateError`. |
-| `task_04_checkpointer_hitl_replay` | **Checkpointer HITL Replay** | `MemorySaver` and `interrupt_before` semantics | Updating state during human-in-the-loop pauses resumes execution at the interrupted node without re-executing preceding nodes. |
-| `task_05_message_window_orphan` | **Sliding Window Message Orphan** | Custom message reducers & API payload validity | Slicing message history to the last 5 items leaves an orphaned `tool` message at index 0, violating OpenAI/Anthropic API constraints. |
+| `task_02_conditional_deadlock` | **Conditional Graph Deadlock** | Conditional routing & cyclic state transitions | Router node resets `retry_count = 0` whenever `status == "retrying"`, trapping the graph in an infinite ping-pong loop between router and validator. |
+| `task_03_parallel_fanout_collision` | **Parallel Fan-Out Channel Collision** | Superstep channel writes without reducers | Two parallel branches write to un-annotated scalar channel `audit_score`, triggering Pregel `InvalidUpdateError` regardless of written values. |
+| `task_04_checkpointer_hitl_replay` | **Checkpointer HITL Replay** | `MemorySaver` and `as_node` edge re-routing | Calling `update_state(..., as_node="draft_node")` re-evaluates outgoing conditional edges, dynamically bypassing `human_review_node`. |
+| `task_05_message_window_orphan` | **Sliding Window Message Orphan** | Custom message reducers & API payload validity | Slicing non-system messages leaves orphaned `tool` messages whose prerequisite `assistant` tool-call was pruned, breaking API validation. |
 | `task_06_send_mapreduce_overwrite` | **Send() Dynamic Map-Reduce Overwrite** | Dynamic parallel fan-out via `Send` API | Multiple `Send("worker_node", ...)` instances concurrently write to un-annotated `processed_count`, causing `InvalidUpdateError`. |
 
 ---
