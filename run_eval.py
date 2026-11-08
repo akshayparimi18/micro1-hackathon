@@ -68,7 +68,11 @@ def call_llm(model: str, prompt: str, temperature: float = 0.0, max_retries: int
         try:
             # 1. Google Gemini
             if "gemini" in model.lower():
-                api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+                api_key = (
+                    os.environ.get("GEMINI_API_KEY")
+                    or os.environ.get("\ufeffGEMINI_API_KEY")
+                    or os.environ.get("GOOGLE_API_KEY")
+                )
                 if not api_key or api_key == "your_google_ai_studio_key_here":
                     raise RuntimeError(
                         "GEMINI_API_KEY not set or still set to placeholder in .env. "
