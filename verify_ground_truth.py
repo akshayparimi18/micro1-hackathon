@@ -10,7 +10,6 @@ import json
 from pathlib import Path
 import warnings
 
-# Suppress LangChain deprecation noise
 warnings.filterwarnings("ignore")
 
 from langgraph.graph import StateGraph, START, END
@@ -64,7 +63,7 @@ def verify_task_02() -> dict:
     # Simulate step-by-step
     state = {"retry_count": 0, "status": "init", "payload_valid": False}
     history = []
-    for step in range(1, 7):
+    for step in range(1, 8):
         if step % 2 == 1:
             node = "router_node"
             upd = router_node(state)
@@ -72,83 +71,107 @@ def verify_task_02() -> dict:
             node = "validator_node"
             upd = validator_node(state)
         state.update(upd)
-        history.append((node, dict(state)))
+        history.append((step, node, dict(state)))
 
-    state_at_step_6 = {"retry_count": state["retry_count"], "status": state["status"]}
+    state_at_step_6 = {"retry_count": history[5][2]["retry_count"], "status": history[5][2]["status"]}
+    state_at_step_7 = {"retry_count": history[6][2]["retry_count"], "status": history[6][2]["status"]}
 
     return {
         "terminates": False,
         "looping_nodes": ["router_node", "validator_node"],
-        "state_at_step_6": state_at_step_6
+        "state_at_step_6": state_at_step_6,
+        "state_at_step_7": state_at_step_7
     }
 
 
 def verify_task_03() -> dict:
     class ParallelState(TypedDict):
+        mode: str
         logs: Annotated[list[str], operator.add]
         audit_score: int
 
+    def route_branches(state: ParallelState) -> list[str]:
+        if state["mode"] == "parallel_audit":
+            return ["branch_a", "branch_b"]
+        return ["branch_c"]
+
     def branch_a(state: ParallelState) -> dict:
-        return {"logs": ["branch_a_ok"], "audit_score": 10}
+        return {"logs": ["a_done"], "audit_score": 10}
 
     def branch_b(state: ParallelState) -> dict:
-        return {"logs": ["branch_b_ok"], "audit_score": 20}
+        return {"logs": ["b_done"], "audit_score": state["audit_score"] + 10}
+
+    def branch_c(state: ParallelState) -> dict:
+        return {"logs": ["c_done"], "audit_score": 5}
 
     builder = StateGraph(ParallelState)
     builder.add_node("branch_a", branch_a)
     builder.add_node("branch_b", branch_b)
-    builder.add_edge(START, "branch_a")
-    builder.add_edge(START, "branch_b")
+    builder.add_node("branch_c", branch_c)
+
+    builder.add_conditional_edges(START, route_branches, ["branch_a", "branch_b", "branch_c"])
     builder.add_edge("branch_a", END)
     builder.add_edge("branch_b", END)
+    builder.add_edge("branch_c", END)
 
     graph = builder.compile()
     caught_status = "Success"
     conflicting_channel = None
 
     try:
-        graph.invoke({"logs": ["init_log"], "audit_score": 0})
+        graph.invoke({"mode": "parallel_audit", "logs": ["init_log"], "audit_score": 0})
     except Exception as e:
         caught_status = type(e).__name__
         if "audit_score" in str(e):
             conflicting_channel = "audit_score"
 
-    surviving_logs = ["init_log", "branch_a_ok", "branch_b_ok"]
+    values_written = [10, 10]
+    surviving_logs = ["init_log", "a_done", "b_done"]
 
     return {
         "status": caught_status,
         "conflicting_channel": conflicting_channel,
+        "values_written_to_conflicting_channel": values_written,
         "surviving_logs": surviving_logs
     }
 
 
 def verify_task_04() -> dict:
-    class DocumentState(TypedDict):
+    class ReviewState(TypedDict):
         version: int
         approved_by: str
+        history: Annotated[list[str], operator.add]
 
     executed_nodes = []
 
-    def draft_node(state: DocumentState) -> dict:
+    def draft_node(state: ReviewState) -> dict:
         executed_nodes.append("draft_node")
-        return {"version": state["version"] + 1, "approved_by": "pending"}
+        return {"version": state["version"] + 1, "approved_by": "pending", "history": ["drafted"]}
 
-    def human_review_node(state: DocumentState) -> dict:
+    def route_draft(state: ReviewState) -> str:
+        if state["approved_by"] == "fast_track":
+            return "publish_node"
+        return "human_review_node"
+
+    def human_review_node(state: ReviewState) -> dict:
         executed_nodes.append("human_review_node")
-        return {"version": state["version"] + 1}
+        return {"version": state["version"] + 1, "history": ["reviewed"]}
 
-    def publish_node(state: DocumentState) -> dict:
+    def publish_node(state: ReviewState) -> dict:
         executed_nodes.append("publish_node")
-        tag = "supervisor_override" if (state["approved_by"] == "supervisor" and state["version"] == 2) else "rejected"
-        return {"approved_by": tag}
+        app = state["approved_by"]
+        v = state["version"]
+        tag = "supervisor_override" if (app == "fast_track" and v == 1) else "standard_publish"
+        return {"version": v + 10, "approved_by": tag, "history": [f"published_by_{app}_v{v}"]}
 
     checkpointer = MemorySaver()
-    builder = StateGraph(DocumentState)
+    builder = StateGraph(ReviewState)
     builder.add_node("draft_node", draft_node)
     builder.add_node("human_review_node", human_review_node)
     builder.add_node("publish_node", publish_node)
+
     builder.add_edge(START, "draft_node")
-    builder.add_edge("draft_node", "human_review_node")
+    builder.add_conditional_edges("draft_node", route_draft, ["human_review_node", "publish_node"])
     builder.add_edge("human_review_node", "publish_node")
     builder.add_edge("publish_node", END)
 
@@ -156,73 +179,63 @@ def verify_task_04() -> dict:
     config = {"configurable": {"thread_id": "thread-101"}}
 
     # Phase 1
-    graph.invoke({"version": 0, "approved_by": "none"}, config=config)
-    phase_1_executed = list(executed_nodes)
+    graph.invoke({"version": 0, "approved_by": "none", "history": ["init"]}, config=config)
 
     # Phase 2
     executed_nodes.clear()
-    graph.update_state(config, {"approved_by": "supervisor"})
+    graph.update_state(config, {"approved_by": "fast_track", "history": ["override"]}, as_node="draft_node")
     final_state = graph.invoke(None, config=config)
     phase_2_executed = list(executed_nodes)
 
-    re_executed = [n for n in phase_2_executed if n in phase_1_executed]
+    skipped = ["human_review_node"] if "human_review_node" not in phase_2_executed else []
 
     return {
         "executed_nodes_on_resume": phase_2_executed,
-        "re_executed_nodes": re_executed,
+        "skipped_nodes_due_to_as_node": skipped,
         "final_approved_by": final_state["approved_by"],
-        "final_version": final_state["version"]
+        "final_version": final_state["version"],
+        "final_history": final_state["history"]
     }
 
 
 def verify_task_05() -> dict:
-    def keep_last_5(existing: list[dict], new: list[dict]) -> list[dict]:
-        return (existing + new)[-5:]
+    def trim_messages(existing: list[dict], new: list[dict]) -> list[dict]:
+        combined = existing + new
+        sys_msgs = [m for m in combined if m.get("role") == "system"]
+        non_sys = [m for m in combined if m.get("role") != "system"]
+        return sys_msgs + non_sys[-4:]
 
     initial_messages = [
-        {"id": "msg_1", "role": "user", "content": "What is the weather in Tokyo?"},
-        {"id": "msg_2", "role": "assistant", "content": None, "tool_calls": [{"id": "call_1", "function": {"name": "get_weather"}}]},
-        {"id": "msg_3", "role": "tool", "tool_call_id": "call_1", "content": "22C, sunny"}
+        {"id": "msg_0", "role": "system", "content": "You are an SRE agent."},
+        {"id": "msg_1", "role": "user", "content": "Check status"},
+        {"id": "msg_2", "role": "assistant", "content": "", "tool_calls": [{"id": "call_1", "name": "ping"}, {"id": "call_2", "name": "uptime"}]},
+        {"id": "msg_3", "role": "tool", "tool_call_id": "call_1", "content": "pong"},
+        {"id": "msg_4", "role": "tool", "tool_call_id": "call_2", "content": "99.9%"}
     ]
-    step_a = [
-        {"id": "msg_4", "role": "assistant", "content": "It is 22C and sunny in Tokyo."},
-        {"id": "msg_5", "role": "user", "content": "What about Paris?"}
-    ]
-    step_b = [
-        {"id": "msg_6", "role": "assistant", "content": None, "tool_calls": [{"id": "call_2", "function": {"name": "get_weather"}}]},
-        {"id": "msg_7", "role": "tool", "tool_call_id": "call_2", "content": "15C, rain"}
+    step_a_messages = [
+        {"id": "msg_5", "role": "assistant", "content": "All healthy."},
+        {"id": "msg_6", "role": "user", "content": "Done"}
     ]
 
-    current = keep_last_5(initial_messages, step_a)
-    final_messages = keep_last_5(current, step_b)
+    final_msgs = trim_messages(initial_messages, step_a_messages)
+    ids = [m["id"] for m in final_msgs]
+    roles = [m["role"] for m in final_msgs]
 
-    roles = [m["role"] for m in final_messages]
-    first_id = final_messages[0]["id"]
-
-    # First message is role 'tool' without preceding 'assistant' tool_calls
-    is_valid = False
-    invalid_reason = "orphaned_tool_message_at_index_0"
-
+    # Index 1 is msg_3 with role 'tool', whose preceding assistant message msg_2 was sliced off
     return {
+        "remaining_message_ids": ids,
         "remaining_roles": roles,
-        "first_message_id": first_id,
-        "is_valid_llm_payload": is_valid,
-        "invalid_reason": invalid_reason
+        "first_orphaned_message_id": "msg_3",
+        "is_valid_llm_payload": False
     }
 
 
 def verify_task_06() -> dict:
-    # Send MapReduce Overwrite
-    status = "InvalidUpdateError"
-    conflicting_channel = "processed_count"
-    aggregated_results = ["chunk_1_done", "chunk_2_done", "chunk_3_done"]
-    required_fix = "annotate_processed_count_with_operator_add"
-
     return {
-        "status": status,
-        "conflicting_channel": conflicting_channel,
-        "aggregated_results": aggregated_results,
-        "required_fix": required_fix
+        "status": "InvalidUpdateError",
+        "conflicting_channel": "processed_count",
+        "num_parallel_superstep_writes": 3,
+        "required_fix": "annotate_processed_count_with_operator_add"
     }
 
 
@@ -265,4 +278,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

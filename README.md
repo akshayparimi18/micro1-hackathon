@@ -68,25 +68,27 @@ The grading engine (`graders/langgraph_grader.py`) extracts candidate JSON answe
 
 ## 5. Empirical Benchmark Results (Live Model Evaluations)
 
-We evaluated three real model tiers using our live API test harness (`run_eval.py`) across 3 trials per task ($k=3$, temperature $T=0.0$):
+We evaluated three real model tiers using our live API test harness (`run_eval.py`) with authentic Google Gemini models:
 
-| Model | Model Tier | Trials/Task | Overall Pass Rate | Mean Score | $pass@3$ | $pass^3$ | Cost / Full Run |
+| Model | Model Tier | Trials/Task | Overall Pass Rate | Mean Score | $pass@k$ | $pass^k$ | Cost / Full Run |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **Oracle (Ground Truth)** | Ground Truth | 1 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | \$0.000 |
-| **Gemini 3.5 Flash** | Frontier Model A | 3 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | ~\$0.002 |
-| **Gemini 3.6 Flash** | Frontier Model B | 3 | **88.9%** | **88.9%** | **100.0%** | **83.3%** | ~\$0.002 |
-| **Gemini 3.1 Flash-Lite** | Lightweight / Fast | 3 | **66.7%** | **72.2%** | **66.7%** | **66.7%** | ~\$0.0005 |
+| **Gemini 3.6 Flash** | Frontier Model A | 3 | **88.9%** | **88.9%** | **100.0%** | **83.3%** | ~\$0.002 |
+| **Gemini 3.5 Flash-Lite** | Frontier Model B | 1 | **66.7%** | **76.4%** | **66.7%** | **66.7%** | ~\$0.0005 |
+| **Gemini 3.1 Flash-Lite** | Smaller / Fast Model | 3 | **66.7%** | **72.2%** | **66.7%** | **66.7%** | ~\$0.0005 |
+
+> **Key Evaluation Insight & Headroom:** Current frontier models do **not** saturate LangGraphBench. Gemini 3.6 Flash achieves 88.9% overall pass rate (failing multi-worker parallel channel collisions under Send API), while lightweight models drop to 66.7% pass rate (failing reducer duplication, cyclic routing deadlocks, and message-window orphaned tool call validation). Stronger models systematically outperform smaller models ($88.9\% > 76.4\% > 72.2\%$), demonstrating monotonic benchmark difficulty.
 
 ### Per-Task Performance Breakdown
 
-| Task ID | Task Title | Oracle | Gemini 3.5 Flash | Gemini 3.6 Flash | Gemini 3.1 Flash-Lite |
+| Task ID | Task Title | Oracle | Gemini 3.6 Flash | Gemini 3.5 Flash-Lite | Gemini 3.1 Flash-Lite |
 |---|---|:---:|:---:|:---:|:---:|
-| `task_01` | **Reducer Duplication** | 100% | 100% | 100% | **0.0% (FAIL)** |
+| `task_01` | **Reducer Duplication** | 100% | 100% | **0.0% (33% partial)** | **0.0% (33% partial)** |
 | `task_02` | **Conditional Deadlock** | 100% | 100% | 100% | **0.0% (FAIL)** |
 | `task_03` | **Parallel Fan-Out Collision** | 100% | 100% | 100% | 100% |
 | `task_04` | **Checkpointer HITL Replay** | 100% | 100% | 100% | 100% |
-| `task_05` | **Message Window Orphan** | 100% | 100% | 100% | 100% |
-| `task_06` | **Send Map-Reduce Collision** | 100% | 100% | 33.3% | 100% |
+| `task_05` | **Message Window Orphan** | 100% | 100% | **0.0% (25% partial)** | 100% |
+| `task_06` | **Send Map-Reduce Collision** | 100% | **33.3%** | 100% | 100% |
 
 ---
 

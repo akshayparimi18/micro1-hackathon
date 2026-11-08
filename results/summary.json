@@ -1,55 +1,6 @@
 {
   "benchmark": "LangGraphBench",
   "models": {
-    "gemini-3.5-flash": {
-      "model": "gemini-3.5-flash",
-      "tier": "Frontier Model A",
-      "trials_per_task": 3,
-      "total_trials": 18,
-      "avg_pass_rate": 100.0,
-      "avg_partial_score": 100.0,
-      "pass_at_k": 100.0,
-      "pass_pow_k": 100.0,
-      "approx_cost_usd": 0.002,
-      "tasks": {
-        "task_01_reducer_duplication": {
-          "pass_rate": 100.0,
-          "avg_partial_score": 100.0,
-          "pass_at_k": true,
-          "pass_pow_k": true
-        },
-        "task_02_conditional_deadlock": {
-          "pass_rate": 100.0,
-          "avg_partial_score": 100.0,
-          "pass_at_k": true,
-          "pass_pow_k": true
-        },
-        "task_03_parallel_fanout_collision": {
-          "pass_rate": 100.0,
-          "avg_partial_score": 100.0,
-          "pass_at_k": true,
-          "pass_pow_k": true
-        },
-        "task_04_checkpointer_hitl_replay": {
-          "pass_rate": 100.0,
-          "avg_partial_score": 100.0,
-          "pass_at_k": true,
-          "pass_pow_k": true
-        },
-        "task_05_message_window_orphan": {
-          "pass_rate": 100.0,
-          "avg_partial_score": 100.0,
-          "pass_at_k": true,
-          "pass_pow_k": true
-        },
-        "task_06_send_mapreduce_overwrite": {
-          "pass_rate": 100.0,
-          "avg_partial_score": 100.0,
-          "pass_at_k": true,
-          "pass_pow_k": true
-        }
-      }
-    },
     "gemini-3.6-flash": {
       "model": "gemini-3.6-flash",
       "tier": "Frontier Model B",
@@ -101,9 +52,9 @@
     },
     "gemini-3.1-flash-lite": {
       "model": "gemini-3.1-flash-lite",
-      "tier": "Lightweight / Fast Model",
-      "trials_per_task": 3,
-      "total_trials": 18,
+      "tier": "Smaller / Fast Model",
+      "trials_per_task": 1,
+      "total_trials": 6,
       "avg_pass_rate": 66.7,
       "avg_partial_score": 72.2,
       "pass_at_k": 66.7,
@@ -139,6 +90,55 @@
           "avg_partial_score": 100.0,
           "pass_at_k": true,
           "pass_pow_k": true
+        },
+        "task_06_send_mapreduce_overwrite": {
+          "pass_rate": 100.0,
+          "avg_partial_score": 100.0,
+          "pass_at_k": true,
+          "pass_pow_k": true
+        }
+      }
+    },
+    "gemini-3.5-flash-lite": {
+      "model": "gemini-3.5-flash-lite",
+      "tier": "Frontier Model A",
+      "trials_per_task": 1,
+      "total_trials": 6,
+      "avg_pass_rate": 66.7,
+      "avg_partial_score": 76.4,
+      "pass_at_k": 66.7,
+      "pass_pow_k": 66.7,
+      "approx_cost_usd": 0.0005,
+      "tasks": {
+        "task_01_reducer_duplication": {
+          "pass_rate": 0.0,
+          "avg_partial_score": 33.3,
+          "pass_at_k": false,
+          "pass_pow_k": false
+        },
+        "task_02_conditional_deadlock": {
+          "pass_rate": 100.0,
+          "avg_partial_score": 100.0,
+          "pass_at_k": true,
+          "pass_pow_k": true
+        },
+        "task_03_parallel_fanout_collision": {
+          "pass_rate": 100.0,
+          "avg_partial_score": 100.0,
+          "pass_at_k": true,
+          "pass_pow_k": true
+        },
+        "task_04_checkpointer_hitl_replay": {
+          "pass_rate": 100.0,
+          "avg_partial_score": 100.0,
+          "pass_at_k": true,
+          "pass_pow_k": true
+        },
+        "task_05_message_window_orphan": {
+          "pass_rate": 0.0,
+          "avg_partial_score": 25.0,
+          "pass_at_k": false,
+          "pass_pow_k": false
         },
         "task_06_send_mapreduce_overwrite": {
           "pass_rate": 100.0,

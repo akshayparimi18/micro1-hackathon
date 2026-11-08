@@ -382,14 +382,25 @@ def evaluate_model(
     pass_at_k_pct = (sum(1 for m in task_metrics.values() if m["pass_at_k"]) / len(tasks)) * 100
     pass_pow_k_pct = (sum(1 for m in task_metrics.values() if m["pass_pow_k"]) / len(tasks)) * 100
 
+    # Determine tier and cost
+    if "preview" in model or "3.5-flash" in model or "pro" in model:
+        tier = "Frontier Model A"
+    elif "3.5-flash-lite" in model or "3.6" in model:
+        tier = "Frontier Model B"
+    else:
+        tier = "Smaller / Fast Model"
+    cost = 0.0005 if "lite" in model.lower() else 0.002
+
     summary_model = {
         "model": model,
+        "tier": tier,
         "trials_per_task": trials,
         "total_trials": total_trials,
         "avg_pass_rate": round(avg_pass_rate, 1),
         "avg_partial_score": round(avg_partial, 1),
         "pass_at_k": round(pass_at_k_pct, 1),
         "pass_pow_k": round(pass_pow_k_pct, 1),
+        "approx_cost_usd": cost,
         "tasks": task_metrics
     }
 
@@ -413,8 +424,8 @@ def evaluate_model(
 
 def main():
     parser = argparse.ArgumentParser(description="LangGraphBench Evaluation Runner")
-    parser.add_argument("--verify-reference", action="store_true", help="Verify reference solutions pass 100%")
-    parser.add_argument("--verify-negative", action="store_true", help="Verify corrupted answers fail 0%")
+    parser.add_argument("--verify-reference", action="store_true", help="Verify reference solutions pass 100%%")
+    parser.add_argument("--verify-negative", action="store_true", help="Verify corrupted answers fail 0%%")
     parser.add_argument("--models", nargs="+", default=[], help="List of model names to evaluate")
     parser.add_argument("--trials", type=int, default=3, help="Number of trials per task (default: 3)")
     parser.add_argument("--temperature", type=float, default=0.0, help="Sampling temperature (default: 0.0)")
@@ -453,9 +464,10 @@ def main():
     for model_name in args.models:
         res = evaluate_model(model_name, trials=args.trials, temperature=args.temperature, delay_between_calls=args.delay)
         current_summary["models"][model_name] = res
+        with open(summary_file, "w", encoding="utf-8") as f:
+            json.dump(current_summary, f, indent=2)
+        print(f"[+] Saved interim progress to: {summary_file}")
 
-    with open(summary_file, "w", encoding="utf-8") as f:
-        json.dump(current_summary, f, indent=2)
     print(f"[+] All results saved to: {summary_file}")
 
 

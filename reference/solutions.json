@@ -10,30 +10,35 @@
     "state_at_step_6": {
       "retry_count": 1,
       "status": "retrying"
+    },
+    "state_at_step_7": {
+      "retry_count": 0,
+      "status": "validating"
     }
   },
   "task_03_parallel_fanout_collision": {
     "status": "InvalidUpdateError",
     "conflicting_channel": "audit_score",
-    "surviving_logs": ["init_log", "branch_a_ok", "branch_b_ok"]
+    "values_written_to_conflicting_channel": [10, 10],
+    "surviving_logs": ["init_log", "a_done", "b_done"]
   },
   "task_04_checkpointer_hitl_replay": {
-    "executed_nodes_on_resume": ["human_review_node", "publish_node"],
-    "re_executed_nodes": [],
+    "executed_nodes_on_resume": ["publish_node"],
+    "skipped_nodes_due_to_as_node": ["human_review_node"],
     "final_approved_by": "supervisor_override",
-    "final_version": 2
+    "final_version": 11,
+    "final_history": ["init", "drafted", "override", "published_by_fast_track_v1"]
   },
   "task_05_message_window_orphan": {
-    "remaining_roles": ["tool", "assistant", "user", "assistant", "tool"],
-    "first_message_id": "msg_3",
-    "is_valid_llm_payload": false,
-    "invalid_reason": "orphaned_tool_message_at_index_0"
+    "remaining_message_ids": ["msg_0", "msg_3", "msg_4", "msg_5", "msg_6"],
+    "remaining_roles": ["system", "tool", "tool", "assistant", "user"],
+    "first_orphaned_message_id": "msg_3",
+    "is_valid_llm_payload": false
   },
   "task_06_send_mapreduce_overwrite": {
     "status": "InvalidUpdateError",
     "conflicting_channel": "processed_count",
-    "aggregated_results": ["chunk_1_done", "chunk_2_done", "chunk_3_done"],
+    "num_parallel_superstep_writes": 3,
     "required_fix": "annotate_processed_count_with_operator_add"
   }
 }
-
