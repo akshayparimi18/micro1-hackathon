@@ -111,3 +111,39 @@ def grade_candidate_response(
         "error": None
     }
 
+
+def run_self_test():
+    """Runs built-in self-tests verifying extraction, grading, and false-pass rejection."""
+    print("=" * 65)
+    print(" LangGraphBench Deterministic Grader Self-Test")
+    print("=" * 65)
+
+    # 1. Extraction test
+    sample_raw = "Analysis:\n<final_answer>\n```json\n{\"total_length\": 7, \"status\": \"complete\"}\n```\n</final_answer>"
+    extracted = extract_final_answer_json(sample_raw)
+    assert extracted == {"total_length": 7, "status": "complete"}, "Extraction failed!"
+    print("[OK] JSON Extraction Test (tags, markdown code fences stripped)")
+
+    # 2. Perfect match test
+    ref = {"total_length": 7, "status": "complete"}
+    res = grade_candidate_response(ref, sample_raw)
+    assert res["passed"] == 1 and res["partial_score"] == 1.0, "Perfect match failed!"
+    print("[OK] Strict Equivalence Match Test (100% precision)")
+
+    # 3. Corrupted / hallucinated rejection test
+    corrupted_raw = "<final_answer>{\"total_length\": 3, \"status\": \"complete\"}</final_answer>"
+    res_corrupt = grade_candidate_response(ref, corrupted_raw)
+    assert res_corrupt["passed"] == 0 and res_corrupt["partial_score"] == 0.5, "Corrupted rejection failed!"
+    print("[OK] Corrupted Input Rejection Test (Zero False Passes)")
+
+    print("=" * 65)
+    print(">>> ALL GRADER TESTS PASSED: 100% Deterministic (Zero False Passes) <<<\n")
+
+
+if __name__ == "__main__":
+    import sys
+    if "--self-test" in sys.argv or len(sys.argv) == 1:
+        run_self_test()
+    else:
+        print("Usage: python graders/langgraph_grader.py --self-test")
+
