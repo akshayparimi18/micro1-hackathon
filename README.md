@@ -1,7 +1,7 @@
 # LangGraphBench: Evaluating Frontier LLMs on Multi-Agent Graph State, Reducers & Pregel Deadlocks
 
 > **Official Submission for the micro1 Eval Hackathon: "Find What AI Can't Do Yet"**  
-> **Video Walkthrough:** [PASTE_YOUR_VIDEO_LINK_HERE]  
+> **Video Walkthrough:** [https://www.loom.com/share/ee03d498004a43e68846d22c5cbd1ac4](https://www.loom.com/share/ee03d498004a43e68846d22c5cbd1ac4)  
 > **Domain:** AI Agent Systems Architecture & Graph Concurrency (LangGraph / Pregel Engine)  
 > **Grader Type:** 100% Deterministic Code Grader (Zero False Passes, Zero LLM Judges)  
 > **Repository:** [https://github.com/akshayparimi18/micro1-hackathon](https://github.com/akshayparimi18/micro1-hackathon)
