@@ -6,6 +6,8 @@ Copy and paste the text below into the submission form on HackerRank for the mic
 
 ### Short Written Description (for HackerRank Event Page)
 
+**Video Walkthrough:** [PASTE_YOUR_VIDEO_LINK_HERE]
+
 **Domain & Task Suite:**
 LangGraphBench is an expert-level evaluation benchmark comprising 6 rigorous tasks designed to measure AI models on multi-agent graph state management, channel reducers, and Pregel concurrency in LangGraph.
 
@@ -23,5 +25,5 @@ These findings demonstrate that models without deep state-machine simulation cap
 
 ### Submission Metadata Checklist:
 1. **ZIP File:** `langgraphbench-eval.zip` (Code, tasks, references, graders, and documentation; < 50 MB).
-2. **Video Walkthrough Link:** [Insert your Loom / YouTube unlisted video link here - see `VIDEO_SCRIPT.md` for the timed walkthrough script].
+2. **Video Walkthrough Link:** [PASTE_YOUR_VIDEO_LINK_HERE]
 3. **GitHub Repository:** [https://github.com/akshayparimi18/micro1-hackathon](https://github.com/akshayparimi18/micro1-hackathon)
